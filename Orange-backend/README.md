@@ -357,16 +357,4 @@ ToolRegistry.register(MyTool())
 | `RAG_SCORE_THRESHOLD` | `0.7` | 相似度阈值 |
 | `CHAT_HISTORY_MAX_TURNS` | `10` | 多轮对话保留轮数 |
 
-## 部署
 
-```bash
-# 生产环境启动
-uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-部署到 18 号服务器时，需配置：
-1. MySQL 连接信息
-2. Qdrant 服务地址
-3. LLM API 地址和密钥
-4. 申请子域名并配置反向代理
-5. CORS `allow_origins` 限制为前端域名
