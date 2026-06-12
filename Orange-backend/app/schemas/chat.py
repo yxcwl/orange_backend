@@ -12,7 +12,7 @@ class ChatRequest(BaseModel):
     """对话请求"""
     question: str = Field(..., min_length=1, max_length=2000, description="用户提问内容")
     conversation_id: Optional[str] = Field(default=None, description="会话ID，为空则创建新会话")
-    stream: bool = Field(default=False, description="是否流式输出")
+    stream: bool = Field(default=True, description="是否流式输出")
 
 
 class ChatResponse(BaseModel):

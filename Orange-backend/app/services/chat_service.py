@@ -64,6 +64,7 @@ QUICK_CARDS = [
 ]
 
 
+# 这里进行简单处理，后续调用API，执行知识库问答
 class ChatService:
     """对话服务"""
 

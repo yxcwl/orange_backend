@@ -5,6 +5,7 @@
 """
 
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -128,7 +129,9 @@ async def upload_document(
     # 保存上传文件
     upload_dir = Path(settings.UPLOAD_DIR)
     upload_dir.mkdir(parents=True, exist_ok=True)
-    stored_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
+    # 以年月份进行创建每月的文件夹
+    month_dir = datetime.datetime.now().strftime("%Y-%m")
+    stored_path = upload_dir /month_dir/ f"{uuid.uuid4()}{file_ext}"
 
     try:
         with open(stored_path, "wb") as f:

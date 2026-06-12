@@ -65,7 +65,8 @@ async def chat_completions(
 
     return ResponseBase(data=result.model_dump())
 
-
+# 流式生成器数据来源的对接
+# 后续看是否还需添加会话id
 async def _stream_generator(
     request: ChatRequest,
     chat_service: ChatService,

@@ -97,6 +97,13 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_DIR: str = "logs"
 
+    # ==================== 认证与安全配置 ====================
+    JWT_SECRET_KEY: str = "change-me-to-a-random-secret-key"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # Token 有效期，默认 24 小时
+    CAPTCHA_EXPIRE_SECONDS: int = 300  # 验证码有效期，默认 5 分钟
+    CAPTCHA_LENGTH: int = 4  # 验证码字符数
+
 
 @lru_cache()
 def get_settings() -> Settings:

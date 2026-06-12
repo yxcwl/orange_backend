@@ -68,6 +68,28 @@ class Document(Base):
     )
 
 
+class User(Base):
+    """用户表"""
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, comment="用户名")
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False, comment="密码哈希")
+    nickname: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="昵称")
+    role: Mapped[str] = mapped_column(
+        String(50), default="user",
+        comment="角色: admin/user/guest，预留权限控制"
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否启用")
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="最后登录时间")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), comment="创建时间"
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, onupdate=func.now(), comment="更新时间"
+    )
+
+
 class ChatLog(Base):
     """问答日志表"""
     __tablename__ = "chat_logs"

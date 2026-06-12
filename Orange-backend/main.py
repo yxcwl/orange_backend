@@ -27,6 +27,29 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"MySQL 数据库初始化失败: {e}")
 
+    # 初始化默认管理员账户
+    try:
+        from app.core.database import get_db
+        from app.models.db_models import User
+        from app.services.auth_service import get_auth_service
+        from sqlalchemy import select
+
+        auth_service = get_auth_service()
+        async for db in get_db():
+            result = await db.execute(select(User).where(User.username == "admin"))
+            if result.scalar_one_or_none() is None:
+                await auth_service.create_user(
+                    db=db,
+                    username="admin",
+                    password="admin123",
+                    nickname="系统管理员",
+                    role="admin",
+                )
+                logger.info("默认管理员账户已创建: admin / admin123（请及时修改密码）")
+            break
+    except Exception as e:
+        logger.warning(f"默认管理员账户初始化失败: {e}")
+
     # 初始化 Qdrant
     try:
         from app.core.qdrant import get_qdrant_manager
