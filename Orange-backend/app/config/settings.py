@@ -58,8 +58,8 @@ class Settings(BaseSettings):
     CHAT_HISTORY_MAX_TURNS: int = 10  # 多轮对话保留的最大轮数
 
     # ==================== 文件上传配置 ====================
-    UPLOAD_DIR: str = "uploads"
-    MAX_UPLOAD_SIZE_MB: int = 50  # 单文件最大 MB
+    UPLOAD_DIR: str = "uploads"  # 这里尽量使用绝对路径进行存储
+    MAX_UPLOAD_SIZE_MB: int = 50  # 单文件最大 MB，可实际需求调整
     ALLOWED_EXTENSIONS: list[str] = [
         ".pdf", ".docx", ".doc", ".txt", ".md",
         ".xlsx", ".xls", ".csv", ".json",

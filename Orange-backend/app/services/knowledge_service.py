@@ -349,6 +349,16 @@ class KnowledgeService:
         except Exception as e:
             logger.warning(f"删除 Qdrant 向量失败: {e}")
 
+        # 删除磁盘文件
+        if doc.stored_path:
+            file_path = Path(doc.stored_path)
+            try:
+                if file_path.exists():
+                    file_path.unlink()
+                    logger.info(f"磁盘文件已删除: {doc.stored_path}")
+            except Exception as e:
+                logger.warning(f"删除磁盘文件失败: {doc.stored_path}, 错误: {e}")
+
         # 删除 MySQL 记录
         await db.delete(doc)
         logger.info(f"文档已删除: doc_id={doc_id}")
