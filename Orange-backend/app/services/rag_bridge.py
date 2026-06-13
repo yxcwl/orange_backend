@@ -6,7 +6,7 @@ RAG 模块桥接层
 
 from typing import Optional
 
-from app.schemas.rag_dto import DocumentEntity, DocumentIngestResult, DocumentSearchResult
+from app.models.rag_dto import DocumentEntity, DocumentIngestResult, DocumentSearchResult
 from app.utils.logger import logger
 
 
@@ -33,7 +33,7 @@ class RAGApiBridge:
             logger.info("独立 RAG 模块不可用，使用内置实现")
             self._use_builtin = True
 
-    def ingest_document(self, document: DocumentEntity) -> DocumentIngestResult:
+    async def ingest_document(self, document: DocumentEntity) -> DocumentIngestResult:
         """
         文档入库
 
@@ -44,7 +44,7 @@ class RAGApiBridge:
             入库结果
         """
         if self._use_builtin:
-            return self._builtin_ingest(document)
+            return await self._async_builtin_ingest(document)
 
         return self._rag_api.ingest_document(document)
 
@@ -62,7 +62,7 @@ class RAGApiBridge:
 
         self._rag_api.delete_knowledge_base_vectors(kb_id=kb_id)
 
-    def search(
+    async def search(
         self,
         query_text: str,
         top_k: int = 5,
@@ -80,18 +80,11 @@ class RAGApiBridge:
             检索结果
         """
         if self._use_builtin:
-            return self._builtin_search(query_text, top_k, kb_id)
+            return await self._async_builtin_search(query_text, top_k, kb_id)
 
         return self._rag_api.search(query_text=query_text, top_k=top_k, kb_id=kb_id)
 
     # ==================== 内置回退实现 ====================
-
-    def _builtin_ingest(self, document: DocumentEntity) -> DocumentIngestResult:
-        """内置入库实现（同步调用，简化版）"""
-        import asyncio
-        return asyncio.get_event_loop().run_until_complete(
-            self._async_builtin_ingest(document)
-        )
 
     async def _async_builtin_ingest(self, document: DocumentEntity) -> DocumentIngestResult:
         """异步内置入库"""
@@ -213,15 +206,6 @@ class RAGApiBridge:
         except Exception as e:
             logger.warning(f"内置删除知识库向量失败: {e}")
 
-    def _builtin_search(
-        self, query_text: str, top_k: int, kb_id: Optional[int]
-    ) -> DocumentSearchResult:
-        """内置检索实现"""
-        import asyncio
-        return asyncio.get_event_loop().run_until_complete(
-            self._async_builtin_search(query_text, top_k, kb_id)
-        )
-
     async def _async_builtin_search(
         self, query_text: str, top_k: int, kb_id: Optional[int]
     ) -> DocumentSearchResult:
@@ -229,7 +213,7 @@ class RAGApiBridge:
         try:
             from app.core.qdrant import get_qdrant_manager
             from app.core.embedding import get_embedding_client
-            from app.schemas.rag_dto import SearchResult
+            from app.models.rag_dto import SearchResult
 
             qdrant = get_qdrant_manager()
             embedding = get_embedding_client()
@@ -282,7 +266,6 @@ class RAGApiBridge:
     @staticmethod
     async def _read_file_builtin(file_path: str, ext: str) -> str:
         """内置文件读取"""
-        from pathlib import Path
 
         if ext in ("txt", "md"):
             with open(file_path, "r", encoding="utf-8") as f:

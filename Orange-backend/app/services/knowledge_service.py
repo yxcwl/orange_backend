@@ -5,8 +5,6 @@
 """
 
 import hashlib
-import json
-import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +19,7 @@ from app.schemas.knowledge import (
     KnowledgeDocumentUpdate,
     KnowledgeSearchResult,
 )
-from app.schemas.rag_dto import DocumentEntity, DocumentIngestResult
+from app.models.rag_dto import DocumentEntity, DocumentIngestResult
 from app.utils.logger import logger
 
 
@@ -153,20 +151,32 @@ class KnowledgeService:
         上传文档并处理入库
 
         流程：
-        1. 在 MySQL 创建 document 记录（status=pending）
-        2. 组装 DocumentEntity 调用 RAGApi 入库
-        3. 根据入库结果更新 MySQL document 状态
+        1. 校验文件名是否重复
+        2. 在 MySQL 创建 document 记录（status=processing）
+        3. 组装 DocumentEntity 调用 RAGApi 入库
+        4. 根据入库结果更新 MySQL document 状态（无论成功失败均持久化）
         """
-        # 计算文件信息
+        file_ext = Path(file_name).suffix.lower()
+        base_name = Path(file_name).stem
+        full_file_name = f"{base_name}{file_ext}"
+
+        existing = await db.execute(
+            select(Document).where(
+                Document.kb_id == kb_id,
+                Document.original_filename == full_file_name,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            raise ValueError(f"知识库中已存在同名文件: {full_file_name}")
+
         file_size = Path(file_path).stat().st_size
         file_hash = _compute_file_hash(file_path)
         mime_type = _get_mime_type(file_name)
 
-        # 1. 创建 MySQL 记录
         doc = Document(
             kb_id=kb_id,
             title=create_data.title,
-            original_filename=file_name,
+            original_filename=full_file_name,
             stored_path=file_path,
             file_size=file_size,
             file_hash=file_hash,
@@ -177,9 +187,9 @@ class KnowledgeService:
             status="processing",
         )
         db.add(doc)
-        await db.flush()  # 获取自增 id
+        await db.flush()
+        await db.refresh(doc)
 
-        # 2. 组装 DocumentEntity 调用 RAGApi
         try:
             from app.services.rag_bridge import get_rag_api
             rag_api = get_rag_api()
@@ -187,7 +197,7 @@ class KnowledgeService:
             entity = DocumentEntity(
                 id=doc.id,
                 kb_id=kb_id,
-                original_filename=file_name,
+                original_filename=full_file_name,
                 stored_path=file_path,
                 file_size=file_size,
                 file_hash=file_hash,
@@ -195,9 +205,8 @@ class KnowledgeService:
                 status="processing",
             )
 
-            result: DocumentIngestResult = rag_api.ingest_document(entity)
+            result: DocumentIngestResult = await rag_api.ingest_document(entity)
 
-            # 3. 根据入库结果更新状态
             if result.success:
                 doc.status = "ready"
                 doc.chunk_count = result.chunk_count
@@ -213,6 +222,7 @@ class KnowledgeService:
             logger.error(f"文档入库异常: {e}")
 
         await db.flush()
+        await db.refresh(doc)
         return _doc_to_response(doc)
 
     async def search(
@@ -235,7 +245,7 @@ class KnowledgeService:
             from app.services.rag_bridge import get_rag_api
             rag_api = get_rag_api()
 
-            result = rag_api.search(
+            result = await rag_api.search(
                 query_text=query,
                 top_k=top_k,
                 kb_id=kb_id,

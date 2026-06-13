@@ -128,10 +128,11 @@ async def upload_document(
 
     # 保存上传文件
     upload_dir = Path(settings.UPLOAD_DIR)
-    upload_dir.mkdir(parents=True, exist_ok=True)
     # 以年月份进行创建每月的文件夹
-    month_dir = datetime.datetime.now().strftime("%Y-%m")
-    stored_path = upload_dir /month_dir/ f"{uuid.uuid4()}{file_ext}"
+    month_dir = datetime.now().strftime("%Y-%m")
+    upload_dir = upload_dir/month_dir
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    stored_path = upload_dir / f"{uuid.uuid4()}{file_ext}"
 
     try:
         with open(stored_path, "wb") as f:
@@ -158,6 +159,11 @@ async def upload_document(
 
         return ResponseBase(data=result.model_dump())
 
+    except ValueError as e:
+        logger.warning(f"文档上传校验失败: {e}")
+        if stored_path.exists():
+            stored_path.unlink()
+        return ResponseBase(code=400, message=str(e))
     except Exception as e:
         logger.error(f"文档上传失败: {e}")
         # 清理文件
