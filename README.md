@@ -1,6 +1,5 @@
 # Orange-RAG 后端服务
-
-广西橙子/柑橘产业智能助手后端，基于 **Python 3.11 + FastAPI + LangChain + Qdrant + MySQL** 构建，提供 RAG 本地知识库问答服务。
+柑橘产业智能助手后端，基于 **Python 3.11 + FastAPI + LangChain + Qdrant + MySQL** 构建，提供 RAG 本地知识库问答服务。
 
 ## 项目架构
 
