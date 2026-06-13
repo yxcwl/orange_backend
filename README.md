@@ -6,12 +6,12 @@
 
 ```
 Orange-backend/
-├── main.py                          # FastAPI 主入口
+├── main.py                          # FastAPI 主入口（含默认管理员管理员初始化）
 ├── requirements.txt                 # Python 依赖
 ├── .env.example                     # 环境变量模板
 └── app/
     ├── config/
-    │   └── settings.py              # 全局配置（pydantic-settings）
+    │   └── settings.py              # 全局配置（pydantic-settings，含JWT/验证码配置）
     ├── core/
     │   ├── database.py              # MySQL 数据库连接与会话管理
     │   ├── qdrant.py                # Qdrant 向量数据库客户端
@@ -19,7 +19,8 @@ Orange-backend/
     │   ├── embedding.py             # Embedding 向量化客户端
     │   └── chunking.py              # 文档切片策略（通用/文献/Markdown）
     ├── models/
-    │   ├── db_models.py             # MySQL ORM 模型（knowledge_bases/documents/chat_logs）
+    │   ├── db_models.py             # MySQL ORM 模型（knowledge_bases/documents/users/chat_logs）
+    │   ├── auth.py                  # 认证相关数据模型（LoginRequest/TokenResponse等）
     │   └── document.py              # 内部数据模型
     ├── schemas/
     │   ├── common.py                # 统一响应格式、分页
@@ -27,6 +28,7 @@ Orange-backend/
     │   ├── knowledge.py             # 知识库相关 Schema
     │   └── rag_dto.py               # RAG 模块对接 DTO（DocumentEntity/IngestResult/SearchResult）
     ├── services/
+    │   ├── auth_service.py          # 认证服务（登录/验证码/JWT/权限预留）
     │   ├── rag_service.py           # RAG 核心流程（检索→构建上下文→生成）
     │   ├── rag_bridge.py            # RAG 模块桥接层（独立模块/内置实现自动切换）
     │   ├── chat_service.py          # 对话服务（多轮记忆+工具调用决策）
@@ -36,9 +38,10 @@ Orange-backend/
     │   ├── base.py                  # 工具基类与注册器
     │   └── fertilizer_calculator.py # 肥料计算器工具
     ├── api/
-    │   ├── deps.py                  # 依赖注入
+    │   ├── deps.py                  # 依赖注入（含认证依赖 get_current_user/require_role）
     │   └── v1/
     │       ├── router.py            # 路由聚合
+    │       ├── auth.py              # 认证 API（登录/验证码/用户信息/修改密码）
     │       ├── chat.py              # 对话 API
     │       ├── knowledge.py         # 知识库管理 API（含知识库CRUD）
     │       ├── tool.py              # 工具调用 API
@@ -47,22 +50,38 @@ Orange-backend/
         └── logger.py                # 日志工具
 ```
 
+> **models 与 schemas 的区别**：`models/` 主要为本地存储对接（MySQL ORM、认证模型等），`schemas/` 主要针对 API 请求/响应和向量知识库对接 DTO。
+
 ## 分层说明
 
 | 层级 | 目录 | 职责 |
 |------|------|------|
-| 配置层 | `config/` | 环境变量加载、全局参数管理 |
+| 配置层 | `config/` | 环境变量加载、全局参数管理（含JWT/验证码配置） |
 | 核心层 | `core/` | 外部服务客户端封装（MySQL、Qdrant、LLM、Embedding）与切片策略 |
-| 模型层 | `models/` | MySQL ORM 模型 + 内部数据结构 |
+| 模型层 | `models/` | MySQL ORM 模型 + 认证数据模型 + 内部数据结构 |
 | Schema层 | `schemas/` | API 请求/响应模型 + RAG 模块对接 DTO |
-| 服务层 | `services/` | 核心业务逻辑（RAG流程、RAG桥接、对话管理、知识库管理、工具调度） |
+| 服务层 | `services/` | 核心业务逻辑（认证、RAG流程、RAG桥接、对话管理、知识库管理、工具调度） |
 | 工具层 | `tools/` | 可被 LLM 调用的工具（计算器等），基于注册机制 |
-| 路由层 | `api/v1/` | HTTP 接口定义，依赖注入，参数校验 |
+| 路由层 | `api/v1/` | HTTP 接口定义，依赖注入，参数校验，认证保护 |
 | 工具层 | `utils/` | 日志等通用工具 |
 
 ## 数据库设计
 
 ### MySQL 表结构
+
+**users（用户表）**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT PK | 自增主键 |
+| username | VARCHAR(100) UNIQUE | 用户名 |
+| hashed_password | VARCHAR(255) | 密码哈希（bcrypt） |
+| nickname | VARCHAR(100) | 昵称 |
+| role | VARCHAR(50) | 角色: admin/user/guest，预留权限控制 |
+| is_active | BOOLEAN | 是否启用 |
+| last_login_at | DATETIME | 最后登录时间 |
+| created_at | DATETIME | 创建时间 |
+| updated_at | DATETIME | 更新时间 |
 
 **knowledge_bases（知识库表）**
 
@@ -152,7 +171,7 @@ pip install -r requirements.txt
 copy .env.example .env
 # 编辑 .env 文件，填入 MySQL、API Key、Qdrant 地址等配置
 
-# 5. 启动服务（首次启动会自动建表）
+# 5. 启动服务（首次启动会自动建表并创建默认管理员）
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -161,9 +180,29 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - ReDoc 文档：`http://localhost:8000/redoc`
 - 健康检查：`http://localhost:8000/health`
 
+### 默认管理员
+
+首次启动自动创建默认管理员账户：
+
+| 用户名 | 密码 | 角色 |
+|--------|------|------|
+| `admin` | `admin123` | admin |
+
+**请及时修改默认密码！** 可通过 `POST /api/v1/auth/change-password` 接口修改。
+
 ## API 接口
 
 所有接口前缀为 `/api/v1`。
+
+### 认证相关
+
+| 方法 | 路径 | 说明 | 需要登录 |
+|------|------|------|----------|
+| GET | `/auth/captcha` | 获取图形验证码 | 否 |
+| POST | `/auth/login` | 用户登录（验证码+密码） | 否 |
+| GET | `/auth/me` | 获取当前用户信息 | 是 |
+| POST | `/auth/change-password` | 修改密码 | 是 |
+| POST | `/auth/users` | 创建用户（仅 admin） | 是 |
 
 ### 知识库管理
 
@@ -204,7 +243,49 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 ## 核心功能
 
-### 1. 文档入库流程
+### 1. 登录认证
+
+登录流程：**获取验证码 → 输入用户名+密码+验证码 → 验证通过返回 JWT Token → 后续请求携带 Token**
+
+```text
+前端请求 GET /auth/captcha
+  → 返回 captcha_id + 验证码图片(Base64)
+前端展示验证码图片，用户输入
+前端请求 POST /auth/login
+  → { username, password, captcha_id, captcha_code }
+  → 验证码校验 → MySQL 用户验证 → 生成 JWT
+  → 返回 { access_token, token_type, expires_in, user_info }
+后续请求 Header: Authorization: Bearer <access_token>
+```
+
+**认证依赖注入**（在路由中使用）：
+
+```python
+from app.api.deps import get_current_user, require_role
+
+# 要求登录
+@router.get("/protected")
+async def protected(user: User = Depends(get_current_user)):
+    ...
+
+# 要求 admin 角色
+@router.get("/admin-only", dependencies=[Depends(require_role("admin"))])
+async def admin_route(user: User = Depends(get_current_user)):
+    ...
+```
+
+**权限预留接口**：
+
+| 方法 | 说明 | 当前实现 |
+|------|------|----------|
+| `check_permission(user, role)` | 角色层级权限检查 | admin(3) > user(2) > guest(1) |
+| `check_resource_permission(user, resource, action)` | 资源级细粒度权限 | admin 全部权限，user 读写，guest 只读 |
+| `require_role("admin")` | 路由级角色依赖工厂 | 用于 `dependencies=[Depends(...)]` |
+| `create_user()` | 管理员创建用户 | 仅 admin 可调用 |
+
+> 后续可扩展为 RBAC/ABAC 权限体系，当前验证码存储为内存字典，可替换为 Redis。
+
+### 2. 文档入库流程
 
 ```text
 后端接收上传文件
@@ -224,7 +305,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     → 失败：status=failed，写入 error_message
 ```
 
-### 2. RAG 模块桥接
+### 3. RAG 模块桥接
 
 `rag_bridge.py` 提供对独立 RAG 模块的桥接调用：
 
@@ -233,7 +314,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 后端统一通过 `get_rag_api()` 获取桥接器，无需关心底层实现。
 
-### 3. RAG 检索增强生成
+### 4. RAG 检索增强生成
 
 核心流程：**用户提问 → 查询向量化 → Qdrant 向量检索 → 构建 Prompt → LLM 生成回答**
 
@@ -242,13 +323,13 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - 相似度阈值可配置（默认 0.7），低于阈值不返回
 - 检索时可传 `kb_id` 限定知识库范围，避免跨库串数据
 
-### 4. 多轮对话
+### 5. 多轮对话
 
 - 通过 `conversation_id` 关联会话上下文
 - 默认保留最近 10 轮对话历史
 - 支持追问和引导式交互
 
-### 5. 文档切片策略
+### 6. 文档切片策略
 
 | 策略 | 适用场景 | 特点 |
 |------|----------|------|
@@ -256,7 +337,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 | `literature` | 专业书籍、手册、文献 | 更小切片（≤400字），保留语义完整性 |
 | `markdown` | 结构化 Markdown 文档 | 按标题层级切片，保留标题元数据 |
 
-### 6. 工具调用
+### 7. 工具调用
 
 当前已注册工具：
 
@@ -288,7 +369,7 @@ class MyTool(BaseTool):
 ToolRegistry.register(MyTool())
 ```
 
-### 7. 快捷推荐卡片
+### 8. 快捷推荐卡片
 
 预设 6 张卡片，覆盖核心使用场景：
 
@@ -299,7 +380,7 @@ ToolRegistry.register(MyTool())
 - 天气影响 — 了解天气对作物的影响
 - 品种指南 — 了解不同品种特点
 
-### 8. 流式输出
+### 9. 流式输出
 
 对话接口支持 SSE 流式响应，设置 `stream: true` 即可。响应片段类型：
 
@@ -337,6 +418,16 @@ ToolRegistry.register(MyTool())
 | `MYSQL_POOL_SIZE` | `10` | 连接池大小 |
 | `MYSQL_MAX_OVERFLOW` | `20` | 连接池最大溢出 |
 
+### 认证与安全配置
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `JWT_SECRET_KEY` | `change-me-to-a-random-secret-key` | JWT 签名密钥（生产环境务必修改） |
+| `JWT_ALGORITHM` | `HS256` | JWT 加密算法 |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | Token 有效期（分钟），默认 24 小时 |
+| `CAPTCHA_EXPIRE_SECONDS` | `300` | 验证码有效期（秒），默认 5 分钟 |
+| `CAPTCHA_LENGTH` | `4` | 验证码字符数 |
+
 ### 其他配置
 
 | 配置项 | 默认值 | 说明 |
@@ -357,3 +448,17 @@ ToolRegistry.register(MyTool())
 | `RAG_SCORE_THRESHOLD` | `0.7` | 相似度阈值 |
 | `CHAT_HISTORY_MAX_TURNS` | `10` | 多轮对话保留轮数 |
 
+## 部署
+
+```bash
+# 生产环境启动
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+部署到 18 号服务器时，需配置：
+1. MySQL 连接信息
+2. Qdrant 服务地址
+3. LLM API 地址和密钥
+4. **修改 `JWT_SECRET_KEY` 为随机强密钥**
+5. 申请子域名并配置反向代理
+6. CORS `allow_origins` 限制为前端域名
